@@ -63,6 +63,15 @@ pip install mss pytesseract Pillow numpy
 > ※2 .lsl レイアウトファイルはOBSの配信上に乗せるため、背景をマゼンダにしてあり、更に透過してあります。  
 > お好みで設定を変更してください。
 
+## ファイルのダウンロード
+
+1. [リポジトリのページ](https://github.com/tetchan-lab/pogostuck-loot-splitter-score) を開く
+2. 緑色の **「Code」** ボタンをクリック
+3. **「Download ZIP」** をクリック
+4. ダウンロードされた ZIP ファイルを任意のフォルダに展開する
+
+> Git や clone は不要です。ZIP を展開するだけで使えます。
+
 ## セットアップ手順
 
 ### 1. キャリブレーション（初回・解像度変更時）
