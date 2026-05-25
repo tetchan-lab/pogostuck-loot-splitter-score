@@ -20,8 +20,9 @@ CAPTURE_REGION = {"top": 73, "left": 245, "width": 350, "height": 150}
 LIVESPLIT_HOST = "localhost"
 LIVESPLIT_PORT = 16834
 
-MAX_LEVEL = 20    # 監視するレベル範囲
+MAX_LEVEL = 30    # 監視するレベル範囲
 STABLE_COUNT = 2  # 同じ値がN回連続で出たら確定（誤認識フィルタ）
+SPLIT_SCORE_INTERVAL = 10000  # スプリット間隔（点）← ここを変えるだけ（例: 1000, 5000, 10000）
 
 # デバッグ用：OCR前処理画像を保存する（True で debug_ocr.png に保存）
 DEBUG_SAVE_OCR_IMAGE = True
@@ -152,10 +153,10 @@ def do_start(last_split_level, current_level=1):
     return current_level  # 現在のレベルを返す
 
 def main():
-    print("=== Pogostuck Loot Mode オートスプリッター起動（複数人ロビー対応版）===")
+    print("=== Pogostuck Loot Mode オートスプリッター起動（スコア1万点スプリット版）===")
     print("LiveSplitを起動してTCP Serverを開始してください。")
     print("ゲームを開始したら自動でスプリットが始まります。")
-    print("スコア0検知によるLevel1中のリセットも検知します。")
+    print("1万点ごとにスプリット、スコア0検知によるリセットも検知します。")
     print("自分のテキストが黄色であることを確認してください。")
     print("Ctrl+C で終了\n")
 
@@ -165,6 +166,7 @@ def main():
     candidate_count = 0
     last_split_level = 0
     last_confirmed_score = 0
+    last_split_milestone = 0  # 直近にスプリットした1万点単位の数（例: 3 = 3万点でスプリット済み）
 
     with mss.MSS() as sct:
         while True:
@@ -194,12 +196,14 @@ def main():
                 # last_split_level == 0 の時は初回起動と判断（どのレベルから始まってもOK）
                 if last_split_level == 0:
                     last_split_level = do_start(last_split_level, confirmed_level)
+                    last_split_milestone = 0
                     last_confirmed_score = confirmed_score
 
                 # ── リセット検知1: Level1に戻ってきた ──
                 elif confirmed_level == 1 and last_split_level > 1:
                     print("[ACTION] リセット検知（Level変化） → タイマーリセット＆再スタート")
                     last_split_level = do_start(last_split_level)
+                    last_split_milestone = 0
                     last_confirmed_score = confirmed_score
 
                 # ── リセット検知2: スコアが0に戻った（Level1中のリセット）──
@@ -207,24 +211,17 @@ def main():
                       confirmed_level == 1 and last_split_level >= 1):
                     print("[ACTION] リセット検知（スコア0） → タイマーリセット＆再スタート")
                     last_split_level = do_start(last_split_level)
+                    last_split_milestone = 0
                     last_confirmed_score = confirmed_score
 
-                # ── レベルアップ → Split ──
-                elif confirmed_level > last_split_level and 1 < confirmed_level <= MAX_LEVEL:
-                    print(f"[ACTION] Split! Level {last_split_level} → {confirmed_level}")
-                    send_livesplit("split")
-                    last_split_level = confirmed_level
-                    last_confirmed_score = confirmed_score
-
-                # ── MAX_LEVEL 到達 → 最終Split ──
-                elif confirmed_level > MAX_LEVEL and last_split_level == MAX_LEVEL:
-                    print("[ACTION] 最終Split！")
-                    send_livesplit("split")
-                    last_split_level = confirmed_level
-                    last_confirmed_score = confirmed_score
-
-                # ── その他の状態変化時もスコアを更新 ──
+                # ── 1万点ごとのスプリット ──
                 else:
+                    current_milestone = confirmed_score // SPLIT_SCORE_INTERVAL
+                    while current_milestone > last_split_milestone:
+                        last_split_milestone += 1
+                        print(f"[ACTION] Split! {last_split_milestone * SPLIT_SCORE_INTERVAL}点到達")
+                        send_livesplit("split")
+                    last_split_level = confirmed_level
                     last_confirmed_score = confirmed_score
 
             time.sleep(0.5)
