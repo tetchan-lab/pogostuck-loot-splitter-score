@@ -1,10 +1,10 @@
-# Pogostuck Loot Mode オートスプリッター
+# Pogostuck Loot Mode オートスプリッター（スコアベース版）
 
 Pogostuck の Loot Mode において、画面 OCR でレベル・スコアを読み取り、LiveSplit のタイマーを自動制御するスクリプトです。
 
 ## 概要
 
-ゲーム画面左上に表示されるプレイヤー情報（例: `三つ編みひなみ_てっちゃん @ 5 | 120`）を 0.5 秒ごとキャプチャ・OCR し、レベルアップを検知するとLiveSplitへ `split` コマンドを送信します。
+ゲーム画面左上に表示されるプレイヤー情報（例: `三つ編みひなみ_てっちゃん @ 5 | 10000`）を 0.5 秒ごとキャプチャ・OCR し、スコアが `SPLIT_SCORE_INTERVAL` の倍数を超えるたびに LiveSplit へ `split` コマンドを送信します。
 
 ```
 プレイヤー名 @ レベル | スコア（コイン枚数）
@@ -14,12 +14,11 @@ Pogostuck の Loot Mode において、画面 OCR でレベル・スコアを読
 
 | ファイル | 説明 |
 |---|---|
-| `pogo_autosplit_lobby.py` | **複数人ロビー対応版**（推奨）Level 20 まで対応。自分の行（黄色テキスト）だけを認識 |
-| `pogo_autosplit.py` | シングルプレイヤー版。Level 10 まで対応 |
+| `pogo_autosplit_score.py` | **スコアベース版**（本スクリプト）指定点数ごとにスプリット。自分の行（黄色テキスト）だけを認識 |
 | `calibrate.py` | キャプチャ領域を確認するためのキャリブレーションツール |
 | `calibrate2.py` | キャプチャ領域を拡大表示して確認するキャリブレーションツール |
-| `LiveSpilitLayout.lsl` | LiveSplit レイアウトファイル |
-| `Pogostuck Rage With Your Friends - Loot.lss` | LiveSplit スプリットファイル |
+| `LiveSpilitLayout_LootScore.lsl` | LiveSplit レイアウトファイル |
+| `Pogostuck Rage With Your Friends - Loot Score.lss` | LiveSplit スプリットファイル |
 
 ## 必要環境
 
@@ -60,7 +59,7 @@ pip install mss pytesseract Pillow numpy
 
 付属の `.lsl` / `.lss` ファイルを読み込むと、レイアウトとスプリット設定が即座に利用できます。
 
-> ※1 .lss スプリットファイルは **Lvel1～20** で設定してあります。  
+> ※1 .lss スプリットファイルはスプリット数に合わせて手動で編集してください（`SPLIT_SCORE_INTERVAL` と LiveSplit のセグメント数を揃えること）。  
 > ※2 .lsl レイアウトファイルはOBSの配信上に乗せるため、背景をマゼンダにしてあり、更に透過してあります。  
 > お好みで設定を変更してください。
 
@@ -87,7 +86,7 @@ CAPTURE_REGION = {"top": 73, "left": 245, "width": 350, "height": 150}
 ### 2. スクリプトの起動
 
 ```bash
-python pogo_autosplit_lobby.py
+python pogo_autosplit_score.py
 ```
 
 ### 3. ゲーム開始
@@ -109,8 +108,8 @@ LiveSplit の TCP Server が起動済みの状態でゲームを始めると、�
       ↓
 ⑥ 同じ値が STABLE_COUNT 回連続で出たら確定（誤認識フィルタ）
       ↓
-⑦ レベルアップ検知 → LiveSplit へ "split" 送信
-   リセット検知    → LiveSplit へ "reset" + "starttimer" 送信
+⑦ スコアが SPLIT_SCORE_INTERVAL の倍数を超えた → LiveSplit へ "split" 送信
+   リセット検知（スコア0 or Level1復帰）→ LiveSplit へ "reset" + "starttimer" 送信
 ```
 
 ## 設定値
@@ -120,7 +119,8 @@ LiveSplit の TCP Server が起動済みの状態でゲームを始めると、�
 | 定数 | デフォルト | 説明 |
 |---|---|---|
 | `CAPTURE_REGION` | `top:73, left:245, width:350, height:150` | キャプチャする画面領域 |
-| `MAX_LEVEL` | `20` | 監視するレベルの上限 |
+| `SPLIT_SCORE_INTERVAL` | `1000` | スプリットする点数間隔（例: 1000, 5000, 10000） |
+| `MAX_LEVEL` | `30` | OCR 認識で有効とするレベルの上限（リセット検知に使用） |
 | `STABLE_COUNT` | `2` | 確定に必要な連続一致回数（誤認識フィルタ） |
 | `DEBUG_SAVE_OCR_IMAGE` | `True` | OCR 前処理画像を `debug_ocr.png` として保存 |
 | `LIVESPLIT_PORT` | `16834` | LiveSplit Server の TCP ポート |
@@ -132,9 +132,9 @@ LiveSplit の TCP Server が起動済みの状態でゲームを始めると、�
 コンソールには以下のような出力が表示されます。
 
 ```
-[OCR raw] '@ 5 | 120'
-[確定] レベル: 4 → 5, スコア: 95 → 120
-[ACTION] Split! Level 4 → 5
+[OCR raw] '@ 5 | 10000'
+[確定] レベル: 5 → 5, スコア: 9500 → 10000
+[ACTION] Split! 10000点到達
   → LiveSplit送信: split
 ```
 

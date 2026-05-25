@@ -1,10 +1,10 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
 <Layout version="1.6.1">
   <Mode>Vertical</Mode>
-  <X>1458</X>
+  <X>1391</X>
   <Y>138</Y>
-  <VerticalWidth>235</VerticalWidth>
-  <VerticalHeight>627</VerticalHeight>
+  <VerticalWidth>302</VerticalWidth>
+  <VerticalHeight>534</VerticalHeight>
   <HorizontalWidth>-1</HorizontalWidth>
   <HorizontalHeight>-1</HorizontalHeight>
   <Settings>
@@ -112,6 +112,24 @@
             <TimingMethod>Current Timing Method</TimingMethod>
           </Settings>
         </Columns>
+      </Settings>
+    </Component>
+    <Component>
+      <Path>LiveSplit.ComparisonTime.dll</Path>
+      <Settings>
+        <Version>1.4</Version>
+        <TextColor>FFFFFFFF</TextColor>
+        <OverrideTextColor>False</OverrideTextColor>
+        <TimeColor>FFFFFFFF</TimeColor>
+        <OverrideTimeColor>False</OverrideTimeColor>
+        <Accuracy>Seconds</Accuracy>
+        <BackgroundColor>00FFFFFF</BackgroundColor>
+        <BackgroundColor2>00FFFFFF</BackgroundColor2>
+        <BackgroundGradient>Plain</BackgroundGradient>
+        <Comparison>Personal Best</Comparison>
+        <TimingMethod>Real Time</TimingMethod>
+        <Display2Rows>False</Display2Rows>
+        <Type>FinalTime</Type>
       </Settings>
     </Component>
   </Components>
