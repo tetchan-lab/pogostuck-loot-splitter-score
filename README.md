@@ -10,6 +10,14 @@ Pogostuck の Loot Mode において、画面 OCR でレベル・スコアを読
 プレイヤー名 @ レベル | スコア（コイン枚数）
 ```
 
+## ファイルのダウンロード
+
+1. ページ上部にある緑色の **「Code」** ボタンをクリック
+2. **「Download ZIP」** をクリック
+3. ダウンロードされた ZIP ファイルを任意のフォルダに展開する
+
+> Git や clone は不要です。ZIP を展開するだけで使えます。
+
 ## ファイル構成
 
 | ファイル | 説明 |
@@ -62,15 +70,6 @@ pip install mss pytesseract Pillow numpy
 > ※1 .lss スプリットファイルはスプリット数に合わせて手動で編集してください（`SPLIT_SCORE_INTERVAL` と LiveSplit のセグメント数を揃えること）。  
 > ※2 .lsl レイアウトファイルはOBSの配信上に乗せるため、背景をマゼンダにしてあり、更に透過してあります。  
 > お好みで設定を変更してください。
-
-## ファイルのダウンロード
-
-1. [リポジトリのページ](https://github.com/tetchan-lab/pogostuck-loot-splitter-score) を開く
-2. 緑色の **「Code」** ボタンをクリック
-3. **「Download ZIP」** をクリック
-4. ダウンロードされた ZIP ファイルを任意のフォルダに展開する
-
-> Git や clone は不要です。ZIP を展開するだけで使えます。
 
 ## セットアップ手順
 
@@ -128,7 +127,7 @@ LiveSplit の TCP Server が起動済みの状態でゲームを始めると、�
 | 定数 | デフォルト | 説明 |
 |---|---|---|
 | `CAPTURE_REGION` | `top:73, left:245, width:350, height:150` | キャプチャする画面領域 |
-| `SPLIT_SCORE_INTERVAL` | `1000` | スプリットする点数間隔（例: 1000, 5000, 10000） |
+| `SPLIT_SCORE_INTERVAL` | `10000` | スプリットする点数間隔（例: 1000, 5000, 10000） |
 | `MAX_LEVEL` | `30` | OCR 認識で有効とするレベルの上限（リセット検知に使用） |
 | `STABLE_COUNT` | `2` | 確定に必要な連続一致回数（誤認識フィルタ） |
 | `DEBUG_SAVE_OCR_IMAGE` | `True` | OCR 前処理画像を `debug_ocr.png` として保存 |
@@ -147,7 +146,7 @@ LiveSplit の TCP Server が起動済みの状態でゲームを始めると、�
   → LiveSplit送信: split
 ```
 
-## リセット検知ロジック
+## タイマーリセット検知ロジック
 
 | 検知条件 | 動作 |
 |---|---|
