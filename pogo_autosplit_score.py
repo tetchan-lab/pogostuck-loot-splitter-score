@@ -14,15 +14,16 @@ pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tessera
 # → 黄色マスクにより自分の行だけが認識される
 # height を広げてスコア上位に関係なく全プレイヤー行をカバー（約20px/行 × 4人 + 余裕）
 # ※ height は実際の行間隔に応じて調整してください（calibrate.py で確認推奨）
-CAPTURE_REGION = {"top": 73, "left": 245, "width": 350, "height": 150}
+CAPTURE_REGION = {"top": 70, "left": 245, "width": 350, "height": 150}
 
 # LiveSplit Server設定
 LIVESPLIT_HOST = "localhost"
 LIVESPLIT_PORT = 16834
 
 MAX_LEVEL = 30    # 監視するレベル範囲
-STABLE_COUNT = 2  # 同じ値がN回連続で出たら確定（誤認識フィルタ）
-SPLIT_SCORE_INTERVAL = 10000  # スプリット間隔（点）← ここを変えるだけ（例: 1000, 5000, 10000）
+STABLE_COUNT = 3  # 同じ値がN回連続で出たら確定（誤認識フィルタ）
+SPLIT_SCORE_INTERVAL = 1000  # スプリット間隔（点）← ここを変えるだけ（例: 1000, 5000, 10000）
+MAX_SCORE_JUMP_FACTOR = 10   # 前回確定スコアからの最大増加倍率（インターバルの10倍超＆3倍超は誤認識と判断）
 
 # デバッグ用：OCR前処理画像を保存する（True で debug_ocr.png に保存）
 DEBUG_SAVE_OCR_IMAGE = True
@@ -178,6 +179,19 @@ def main():
                 continue
 
             raw_level, raw_score = raw_state
+
+            # --- スコア急増サニティチェック（誤認識フィルタ）---
+            # 例: 4510 → 47208 のような急増はOCR誤認識として無視
+            if (confirmed_score is not None and
+                    raw_score > confirmed_score + SPLIT_SCORE_INTERVAL * MAX_SCORE_JUMP_FACTOR and
+                    raw_score > confirmed_score * 3):
+                print(f"  → スコア急増スキップ（誤認識の可能性）: {confirmed_score} → {raw_score} "
+                      f"(差: {raw_score - confirmed_score})")
+                # candidateもリセットして誤認識値が蓄積しないようにする
+                candidate_state = None
+                candidate_count = 0
+                time.sleep(0.5)
+                continue
 
             # --- 安定化フィルタ ---
             if raw_state == candidate_state:
