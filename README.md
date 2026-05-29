@@ -120,14 +120,16 @@ python calibrate.py
 `calibrate_check.png` が生成されます。ファイルを開いて **`| スコア` の数字部分だけが白く写っている** ことを確認してください。  
 同梱の `sample_calibrate_check.png` が正常時の参考画像です。
 
-数字がはみ出たり欠ける場合は、スクリプト冒頭の以下の定数をメモ帳などで調整してください。
+数字がはみ出たり欠ける場合は、**`calibrate.py`** の先頭にある以下の定数をメモ帳などで調整してください。
 
 ```python
 LEFT_CAPTURE_TOP    = 70   # スコア行の上端（px）
 LEFT_CAPTURE_LEFT   = 325  # 「|」の少し右から開始（px）
 LEFT_CAPTURE_WIDTH  = 200  # 数字全体を覆う幅（px）
-LEFT_CAPTURE_HEIGHT = 150  # 全プレイヤー行をカバーする高さ
+LEFT_CAPTURE_HEIGHT = 150  # 全プレイヤー行をカバーする高さ（px）
 ```
+
+値が決まったら、**`pogo_autosplit_score.py`** の先頭にある同名の定数にも同じ値を設定してください。
 
 ---
 
