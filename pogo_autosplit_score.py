@@ -1,34 +1,47 @@
 import mss
 import pytesseract
 from PIL import Image
+import numpy as np
 import socket
 import time
 import re
 
-# === 設定 ===
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# ============================================================
+# ★ 設定ここから ★  ← ここだけ変更すれば動作を調整できます
+# ============================================================
 
-# @ の後の数字が表示されている領域（座標はキャリブレーション後に調整）
-# top, left はウィンドウタイトルバー含む絶対座標
-# 複数人ロビー対応版: 自分のテキストは黄色、他プレイヤーは白色
-# → 黄色マスクにより自分の行だけが認識される
-# height を広げてスコア上位に関係なく全プレイヤー行をカバー（約20px/行 × 4人 + 余裕）
-# ※ height は実際の行間隔に応じて調整してください（calibrate.py で確認推奨）
-CAPTURE_REGION = {"top": 70, "left": 245, "width": 350, "height": 150}
+# Tesseract-OCR の実行ファイルパス
+TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
-# LiveSplit Server設定
+# キャプチャ領域（calibrate.py で「|」以降の数字部分の座標を確認して設定）
+LEFT_CAPTURE_TOP    = 70   # 左上スコア行の上端（px）
+LEFT_CAPTURE_LEFT   = 325  # 「|」の少し右から開始（px）
+LEFT_CAPTURE_WIDTH  = 200  # 数字全体を覆う幅（px）
+LEFT_CAPTURE_HEIGHT = 150  # ロビー順位に関係なく全プレイヤー行をカバー（約30px/行 × 4人 + 余裕）
+
+# LiveSplit Server 設定
 LIVESPLIT_HOST = "localhost"
 LIVESPLIT_PORT = 16834
 
-MAX_LEVEL = 30    # 監視するレベル範囲
-STABLE_COUNT = 3  # 同じ値がN回連続で出たら確定（誤認識フィルタ）
-SPLIT_SCORE_INTERVAL = 1000  # スプリット間隔（点）← ここを変えるだけ（例: 1000, 5000, 10000）
-MAX_SCORE_JUMP_FACTOR = 10   # 前回確定スコアからの最大増加倍率（インターバルの10倍超＆3倍超は誤認識と判断）
+# スプリット間隔（点）
+SPLIT_SCORE_INTERVAL = 3000  # 何点ごとにスプリットするか（例: 1000, 3000, 5000, 10000）
 
-# デバッグ用：OCR前処理画像を保存する（True で debug_ocr.png に保存）
+# 許容する最大スコア減少量（点）
+# ルートモードでは弾を撃つたびに1点減るため、小さな減少は正常
+# これを超える急減は誤認識として拒否する（例: 47820→4782 は拒否、47820→47800 は許容）
+MAX_SCORE_DROP = 500
+
+# 認識安定化：同じ値がN回連続して出たときに「確定」と見なす
+STABLE_COUNT = 3
+
+# デバッグ用：True にすると OCR直前の画像を debug_ocr.png に保存する
 DEBUG_SAVE_OCR_IMAGE = True
 
-# ===========================
+# ============================================================
+# ★ 設定ここまで ★
+# ============================================================
+
+pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
 
 def send_livesplit(command: str):
     try:
@@ -48,195 +61,158 @@ def send_livesplit(command: str):
     except Exception as e:
         print(f"[LiveSplit接続エラー] {e}")
 
-def get_game_state(sct, last_split_level: int = 0) -> tuple[int, int] | None:
-    """ゲームの現在の状態（レベルとスコア）を取得
-    
-    Args:
-        sct: mssのスクリーンショットオブジェクト
-        last_split_level: 現在のスプリットレベル（フォールバック制限用）
-    
+def get_score_left(sct) -> int | None:
+    """左上の「| 数字」部分をOCRで読み取る（黄色テキスト、グラデーションなし）
+
     Returns:
-        tuple[int, int] | None: (level, score) のタプル、取得失敗時は None
+        int | None: 読み取ったスコア。認識失敗時は None
     """
-    screenshot = sct.grab(CAPTURE_REGION)
+    region = {
+        "top":    LEFT_CAPTURE_TOP,
+        "left":   LEFT_CAPTURE_LEFT,
+        "width":  LEFT_CAPTURE_WIDTH,
+        "height": LEFT_CAPTURE_HEIGHT,
+    }
+
+    screenshot = sct.grab(region)
     img = Image.frombytes("RGB", screenshot.size, screenshot.rgb)
 
-    # ★ 黄色テキストだけを白に、それ以外を黒にマスク
-    # 自分のプレイヤー行テキストのみ黄色なので、他プレイヤー（白色）は黒くマスクされる
-    import numpy as np
+    # 左上スコアは黄色テキスト（グラデーションなし・均一な黄色）
+    # 右上より閾値を厳しめにしてノイズを抑える
     arr = np.array(img)
-    # ゲームUIの黄色: バランス調整（テキストを残しつつ背景ノイズを除外）
-    # 黄色 = R高, G高, B低 かつ R-B差が大きい
     yellow_mask = (
-        (arr[:,:,0] > 190) &  # R > 190
-        (arr[:,:,1] > 170) &  # G > 170
-        (arr[:,:,2] < 70) &   # B < 70
-        ((arr[:,:,0] - arr[:,:,2]) > 140)  # R-B差が大きい（黄色の特徴）
+        (arr[:,:,0] > 180) &   # R > 180
+        (arr[:,:,1] > 160) &   # G > 160
+        (arr[:,:,2] < 80) &    # B < 80
+        ((arr[:,:,0].astype(int) - arr[:,:,2].astype(int)) > 120)  # R-B差
     )
     masked = np.zeros_like(arr)
-    masked[yellow_mask] = [255, 255, 255]  # 黄色 → 白
+    masked[yellow_mask] = [255, 255, 255]
     img = Image.fromarray(masked.astype(np.uint8), 'RGB')
 
-    # 拡大してOCR精度UP
+    # 3倍拡大でOCR精度UP
     img = img.resize((img.width * 3, img.height * 3), Image.NEAREST)
 
-    # デバッグ用：OCR前の画像を保存
     if DEBUG_SAVE_OCR_IMAGE:
         img.save("debug_ocr.png")
 
-    # psm 11: まばらなテキストモード
-    # height 拡大により自分の行は画像内の任意のY位置に出現するため、
-    # 単行モード(psm 7)より位置に依存しない psm 11 を使用
     text = pytesseract.image_to_string(
         img,
-        config="--psm 11 -c tessedit_char_whitelist=0123456789@| "
+        config="--psm 11 -c tessedit_char_whitelist=0123456789"
     )
 
-    print(f"[OCR raw] '{text.strip()}'")
+    text = text.strip()
+    print(f"[OCR raw LEFT] '{text}'")
 
-    # ★ @ あり: "@ 1 | 0" の形式でレベルとスコアを抽出
-    # スコア部分はオプショナル（認識できない場合は0として扱う）
-    match = re.search(r'@\s*(\d{1,2})\s*\|(?:\s*(\d+))?', text)
-    if match:
-        level = int(match.group(1))
-        score = int(match.group(2)) if match.group(2) else 0
-        if 1 <= level <= MAX_LEVEL + 2:
-            return (level, score)
-
-    # ★ @ なし fallback: "数字 | 数字" の形式
-    # ただし行頭の "1)" の "1" を拾わないよう | の直前を優先
-    # スコア部分もオプショナル
-    match2 = re.search(r'(\d{1,2})\s*\|(?:\s*(\d+))?', text)
-    if match2:
-        level_str = match2.group(1)
-        score = int(match2.group(2)) if match2.group(2) else 0
-        
-        # まず通常のレベルとして試す
-        level = int(level_str)
-        if 1 <= level <= MAX_LEVEL + 2:
-            return (level, score)
-        
-        # 範囲外の2桁数字の場合、下1桁をレベルとして試す（@との癒着対策）
-        # 例: "45" → "5" (@ と 5 が癒着して 45 と認識された場合)
-        if len(level_str) == 2:
-            level = int(level_str[1])  # 下1桁
-            if 1 <= level <= MAX_LEVEL + 2:
-                print(f"  → 癒着修正: '{level_str}' → Level={level}, Score={score}")
-                return (level, score)
-
-    # ★ 最終フォールバック: "| 数字" または "|" のみ → Level1と仮定
-    # @とレベル番号が認識できない場合の救済措置
-    # 誤判定防止: Level1付近(last_split_level <= 1)でのみ使用
-    if last_split_level <= 1:
-        match3 = re.search(r'\|\s*(\d+)?', text)
-        if match3:
-            level = 1  # Level1と仮定
-            score = int(match3.group(1)) if match3.group(1) else 0
-            print(f"  → フォールバック: Level={level}(仮定), Score={score}")
-            return (level, score)
+    digits = re.sub(r'\D', '', text)
+    if digits:
+        return int(digits)
 
     return None
 
-def do_start(last_split_level, current_level=1):
-    """タイマーをリセットして開始
-    
-    Args:
-        last_split_level: 現在のスプリットレベル
-        current_level: 開始時のレベル（デフォルト：1）
-    
-    Returns:
-        int: 新しいlast_split_level
-    """
-    print("[ACTION] タイマー開始")
+
+def do_reset_start():
+    """タイマーをリセットして再スタート"""
+    print("[ACTION] タイマーリセット＆スタート")
     send_livesplit("reset")
     time.sleep(0.1)
     send_livesplit("starttimer")
-    return current_level  # 現在のレベルを返す
 
 def main():
-    print("=== Pogostuck Loot Mode オートスプリッター起動（スコア1万点スプリット版）===")
-    print("LiveSplitを起動してTCP Serverを開始してください。")
-    print("ゲームを開始したら自動でスプリットが始まります。")
-    print("1万点ごとにスプリット、スコア0検知によるリセットも検知します。")
-    print("自分のテキストが黄色であることを確認してください。")
+    print("=== Pogostuck オートスプリッター起動 ===")
+    print(f"スプリット間隔: {SPLIT_SCORE_INTERVAL}点ごと")
+    print("LiveSplit を起動して TCP Server を開始してください。")
+    print("スコアが 0 に戻るとタイマーを自動リセット＆再スタートします。")
     print("Ctrl+C で終了\n")
 
-    confirmed_level = None
-    confirmed_score = None
-    candidate_state = None  # (level, score) のタプル
-    candidate_count = 0
-    last_split_level = 0
-    last_confirmed_score = 0
-    last_split_milestone = 0  # 直近にスプリットした1万点単位の数（例: 3 = 3万点でスプリット済み）
+    confirmed_score = None   # 直近に「確定」したスコア
+    candidate_score = None   # 安定化中のスコア候補
+    candidate_count = 0      # 候補が連続して出た回数
+    last_split_milestone = 0 # 直近にスプリットしたマイルストーン番号（例: 3 = 3×interval 点でスプリット済み）
+    started = False          # タイマーが動いているか
 
-    with mss.MSS() as sct:
+    with mss.mss() as sct:
         while True:
-            raw_state = get_game_state(sct, last_split_level)
+            raw_score = get_score_left(sct)
 
-            # ★ None は無視（揺れの原因なのでスキップ）
-            if raw_state is None:
+            # 認識失敗は無視
+            if raw_score is None:
                 time.sleep(0.5)
                 continue
 
-            raw_level, raw_score = raw_state
+            # --- 急増フィルタ（誤認識ノイズ除去）---
+            # 確定済みスコアから異常に大きい値はノイズとして捨てる
+            # 例: confirmed=419 のときに 900419 が来たら拒否
+            # スコアは単調増加なので、前回の3倍+インターバル10個分を超えたら誤認識と判断
+            if confirmed_score is not None and confirmed_score > 0:
+                max_reasonable = confirmed_score * 3 + SPLIT_SCORE_INTERVAL * 10
+                if raw_score > max_reasonable:
+                    print(f"  → 急増スキップ: {confirmed_score} → {raw_score} (上限 {max_reasonable})")
+                    candidate_score = None
+                    candidate_count = 0
+                    time.sleep(0.5)
+                    continue
 
-            # --- スコア急増サニティチェック（誤認識フィルタ）---
-            # 例: 4510 → 47208 のような急増はOCR誤認識として無視
-            if (confirmed_score is not None and
-                    raw_score > confirmed_score + SPLIT_SCORE_INTERVAL * MAX_SCORE_JUMP_FACTOR and
-                    raw_score > confirmed_score * 3):
-                print(f"  → スコア急増スキップ（誤認識の可能性）: {confirmed_score} → {raw_score} "
-                      f"(差: {raw_score - confirmed_score})")
-                # candidateもリセットして誤認識値が蓄積しないようにする
-                candidate_state = None
+            # --- 減少フィルタ（誤認識ノイズ除去）---
+            # ルートモードでは弾を撃つと1点ずつ減るため小さな減少は正常
+            # MAX_SCORE_DROP を超える急減（例: 47820→4782）は誤認識として拒否
+            if confirmed_score is not None and raw_score > 0 and raw_score < confirmed_score - MAX_SCORE_DROP:
+                print(f"  → 急減スキップ: {confirmed_score} → {raw_score} (許容下限 {confirmed_score - MAX_SCORE_DROP})")
+                candidate_score = None
                 candidate_count = 0
                 time.sleep(0.5)
                 continue
 
             # --- 安定化フィルタ ---
-            if raw_state == candidate_state:
+            # 同じ値が STABLE_COUNT 回連続で出たときだけ「確定」とする
+            if raw_score == candidate_score:
                 candidate_count += 1
             else:
-                candidate_state = raw_state
+                candidate_score = raw_score
                 candidate_count = 1
 
-            if candidate_count >= STABLE_COUNT and candidate_state != (confirmed_level, confirmed_score):
-                prev_level = confirmed_level
-                prev_score = confirmed_score
-                confirmed_level, confirmed_score = candidate_state
-                print(f"[確定] レベル: {prev_level} → {confirmed_level}, スコア: {prev_score} → {confirmed_score}")
+            if candidate_count < STABLE_COUNT:
+                time.sleep(0.5)
+                continue
 
-                # ── ゲーム開始（初回）──
-                # last_split_level == 0 の時は初回起動と判断（どのレベルから始まってもOK）
-                if last_split_level == 0:
-                    last_split_level = do_start(last_split_level, confirmed_level)
+            # 前回と同じ確定値なら何もしない
+            if candidate_score == confirmed_score:
+                time.sleep(0.5)
+                continue
+
+            prev_score = confirmed_score
+            confirmed_score = candidate_score
+            print(f"[確定] スコア: {prev_score} → {confirmed_score}")
+
+            # ── 初回確定 ──
+            if not started:
+                if confirmed_score == 0:
+                    # スコア 0 でスタート → タイマー開始
+                    do_reset_start()
                     last_split_milestone = 0
-                    last_confirmed_score = confirmed_score
-
-                # ── リセット検知1: Level1に戻ってきた ──
-                elif confirmed_level == 1 and last_split_level > 1:
-                    print("[ACTION] リセット検知（Level変化） → タイマーリセット＆再スタート")
-                    last_split_level = do_start(last_split_level)
-                    last_split_milestone = 0
-                    last_confirmed_score = confirmed_score
-
-                # ── リセット検知2: スコアが0に戻った（Level1中のリセット）──
-                elif (confirmed_score == 0 and last_confirmed_score > 0 and 
-                      confirmed_level == 1 and last_split_level >= 1):
-                    print("[ACTION] リセット検知（スコア0） → タイマーリセット＆再スタート")
-                    last_split_level = do_start(last_split_level)
-                    last_split_milestone = 0
-                    last_confirmed_score = confirmed_score
-
-                # ── 1万点ごとのスプリット ──
                 else:
-                    current_milestone = confirmed_score // SPLIT_SCORE_INTERVAL
-                    while current_milestone > last_split_milestone:
-                        last_split_milestone += 1
-                        print(f"[ACTION] Split! {last_split_milestone * SPLIT_SCORE_INTERVAL}点到達")
-                        send_livesplit("split")
-                    last_split_level = confirmed_level
-                    last_confirmed_score = confirmed_score
+                    # 途中からスクリプト起動（スコアが既に非ゼロ）
+                    # タイマー操作はせず、現在のマイルストーンから監視開始
+                    last_split_milestone = confirmed_score // SPLIT_SCORE_INTERVAL
+                    print(f"  → 途中参加: マイルストーン {last_split_milestone} から監視開始")
+                started = True
+                time.sleep(0.5)
+                continue
+
+            # ── リセット検知: スコアが 0 に戻った ──
+            if confirmed_score == 0 and prev_score is not None and prev_score > 0:
+                print("[ACTION] リセット検知（スコア0） → タイマーリセット＆再スタート")
+                do_reset_start()
+                last_split_milestone = 0
+                time.sleep(0.5)
+                continue
+
+            # ── スプリット ──
+            current_milestone = confirmed_score // SPLIT_SCORE_INTERVAL
+            while current_milestone > last_split_milestone:
+                last_split_milestone += 1
+                print(f"[ACTION] Split! {last_split_milestone * SPLIT_SCORE_INTERVAL}点到達")
+                send_livesplit("split")
 
             time.sleep(0.5)
 

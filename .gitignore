@@ -46,6 +46,8 @@ desktop.ini
 *.jpg
 *.jpeg
 *.bmp
+# キャリブレーション確認用サンプル画像はコミット対象
+!sample_calibrate_check.png
 
 # Temporary files
 *.tmp
