@@ -93,15 +93,19 @@ def get_score_left(sct) -> int | None:
     # 3倍拡大でOCR精度UP
     img = img.resize((img.width * 3, img.height * 3), Image.NEAREST)
 
+    # 余白追加（Tesseractが端の文字を見落としにくくなる）
+    from PIL import ImageOps
+    img = ImageOps.expand(img, border=20, fill='black')
+
     if DEBUG_SAVE_OCR_IMAGE:
         img.save("debug_ocr.png")
 
+    # 黄色マスク後は自分のスコア1行のみ残るため --psm 7（単一行）固定
     text = pytesseract.image_to_string(
         img,
-        config="--psm 11 -c tessedit_char_whitelist=0123456789"
-    )
+        config="--psm 7 -c tessedit_char_whitelist=0123456789"
+    ).strip()
 
-    text = text.strip()
     print(f"[OCR raw LEFT] '{text}'")
 
     digits = re.sub(r'\D', '', text)
