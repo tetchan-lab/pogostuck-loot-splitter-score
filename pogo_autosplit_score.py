@@ -5,6 +5,7 @@ import numpy as np
 import socket
 import time
 import re
+import os
 
 # ============================================================
 # ★ 設定ここから ★  ← ここだけ変更すれば動作を調整できます
@@ -18,6 +19,9 @@ LEFT_CAPTURE_TOP    = 70   # 左上スコア行の上端（px）
 LEFT_CAPTURE_LEFT   = 325  # 「|」の少し右から開始（px）
 LEFT_CAPTURE_WIDTH  = 200  # 数字全体を覆う幅（px）
 LEFT_CAPTURE_HEIGHT = 150  # ロビー順位に関係なく全プレイヤー行をカバー（約30px/行 × 4人 + 余裕）
+
+# acklog.txt のパス（リセット検知用）
+LOG_FILE = r"C:\Program Files (x86)\Steam\steamapps\common\Pogostuck\acklog.txt"
 
 # LiveSplit Server 設定
 LIVESPLIT_HOST = "localhost"
@@ -126,7 +130,7 @@ def main():
     print("=== Pogostuck オートスプリッター起動 ===")
     print(f"スプリット間隔: {SPLIT_SCORE_INTERVAL}点ごと")
     print("LiveSplit を起動して TCP Server を開始してください。")
-    print("スコアが 0 に戻るとタイマーを自動リセット＆再スタートします。")
+    print("acklog.txt の新シード検知でタイマーを自動リセット＆再スタートします。")
     print("Ctrl+C で終了\n")
 
     confirmed_score = None   # 直近に「確定」したスコア
@@ -134,9 +138,42 @@ def main():
     candidate_count = 0      # 候補が連続して出た回数
     last_split_milestone = 0 # 直近にスプリットしたマイルストーン番号（例: 3 = 3×interval 点でスプリット済み）
     started = False          # タイマーが動いているか
+    # 起動時点のファイル末尾から監視開始（既存の古いシードを無視する）
+    last_log_pos = os.path.getsize(LOG_FILE) if os.path.exists(LOG_FILE) else 0
+    current_seed = None      # 現在のランのシード値
 
     with mss.mss() as sct:
         while True:
+            # ── acklog.txt でリセット（新ラン開始）を検知 ──
+            try:
+                if os.path.exists(LOG_FILE):
+                    stat = os.stat(LOG_FILE)
+                    # ファイルが縮小した場合 → ゲームが再起動して新しいログになった
+                    if stat.st_size < last_log_pos:
+                        last_log_pos = 0
+                        current_seed = None
+                    if stat.st_size > last_log_pos:
+                        with open(LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
+                            f.seek(last_log_pos)
+                            chunk = f.read()
+                        last_log_pos = stat.st_size
+                        for m in re.finditer(
+                            r"dungeonSetInitialSeed\(1\) at frame \d+ -> lvl\(0\) seed\((\d+)\)",
+                            chunk
+                        ):
+                            new_seed = m.group(1)
+                            if new_seed != current_seed:
+                                current_seed = new_seed
+                                print(f"\n[新ラン検知] seed={new_seed} → タイマーリセット＆スタート")
+                                do_reset_start()
+                                last_split_milestone = 0
+                                confirmed_score = None
+                                candidate_score = None
+                                candidate_count = 0
+                                started = True
+            except Exception as e:
+                print(f"[ログ読み込みエラー] {e}")
+
             raw_score = get_score_left(sct)
 
             # 認識失敗は無視
@@ -188,26 +225,13 @@ def main():
             confirmed_score = candidate_score
             print(f"[確定] スコア: {prev_score} → {confirmed_score}")
 
-            # ── 初回確定 ──
+            # ── 初回確定（スクリプト途中起動時） ──
             if not started:
-                if confirmed_score == 0:
-                    # スコア 0 でスタート → タイマー開始
-                    do_reset_start()
-                    last_split_milestone = 0
-                else:
-                    # 途中からスクリプト起動（スコアが既に非ゼロ）
-                    # タイマー操作はせず、現在のマイルストーンから監視開始
-                    last_split_milestone = confirmed_score // SPLIT_SCORE_INTERVAL
-                    print(f"  → 途中参加: マイルストーン {last_split_milestone} から監視開始")
+                # 途中からスクリプト起動（スコアが既に非ゼロ・acklog未検知）
+                # タイマー操作はせず、現在のマイルストーンから監視開始
+                last_split_milestone = confirmed_score // SPLIT_SCORE_INTERVAL
+                print(f"  → 途中参加: マイルストーン {last_split_milestone} から監視開始")
                 started = True
-                time.sleep(0.5)
-                continue
-
-            # ── リセット検知: スコアが 0 に戻った ──
-            if confirmed_score == 0 and prev_score is not None and prev_score > 0:
-                print("[ACTION] リセット検知（スコア0） → タイマーリセット＆再スタート")
-                do_reset_start()
-                last_split_milestone = 0
                 time.sleep(0.5)
                 continue
 
