@@ -9,7 +9,7 @@ A script that captures and OCR-reads the score on screen during Pogostuck's Loot
 Every 0.5 seconds, the script captures the score area displayed in the upper-left of the game screen (e.g., the `10000` part of `@ 5 | 10000`), runs OCR on it, and sends a `split` command to LiveSplit each time the score crosses a multiple of `SPLIT_SCORE_INTERVAL`.
 
 - Your own score is displayed in yellow text, so only yellow pixels are extracted for recognition.
-- When the score returns to 0, the timer is automatically reset and restarted.
+- The game's log file (`acklog.txt`) is monitored for new run seed generation to automatically reset and restart the timer.
 
 ## Downloading the Files
 
@@ -23,7 +23,7 @@ Every 0.5 seconds, the script captures the score area displayed in the upper-lef
 
 | File | Description |
 |---|---|
-| `pogo_autosplit_score.py` | Main script. Splits at specified score intervals and detects score-0 resets |
+| `pogo_autosplit_score.py` | Main script. Splits at specified score intervals and detects new runs via acklog.txt seed detection |
 | `calibrate.py` | Calibration tool to verify the capture region |
 | `sample_calibrate_check.png` | Reference image showing a successful calibration |
 | `LiveSpilitLayout_LootScore.lsl` | LiveSplit layout file |
@@ -142,7 +142,9 @@ With LiveSplit's Server running, type the following in Command Prompt:
 python pogo_autosplit_score.py
 ```
 
-Once the script is running, start the game — the timer will automatically start the moment your score begins moving from 0.
+Once the script is running, start the game — the timer will automatically reset and start the moment a new run seed is generated.
+
+> ⚠️ **Note:** Even if the game was already running before you launched the script (i.e., an existing `acklog.txt` is present), only seeds written **after** the script starts are detected, so no false triggers will occur.
 
 ## How It Works
 
@@ -160,7 +162,7 @@ Once the script is running, start the game — the timer will automatically star
 ⑥ Confirm the value once the same result appears STABLE_COUNT times in a row
       ↓
 ⑦ Score exceeds a multiple of SPLIT_SCORE_INTERVAL → send "split" to LiveSplit
-   Score returns to 0 → send "reset" + "starttimer" to LiveSplit
+   New seed written to acklog.txt → send "reset" + "starttimer" to LiveSplit
 ```
 
 ## Configuration
@@ -170,6 +172,7 @@ Adjust behavior in the `★ Settings Start ★` block at the top of the script.
 | Constant | Default | Description |
 |---|---|---|
 | `TESSERACT_CMD` | `C:\...\tesseract.exe` | Path to the Tesseract executable |
+| `LOG_FILE` | `C:\...\acklog.txt` | Path to the Pogostuck log file (used for reset detection) |
 | `LEFT_CAPTURE_TOP` | `70` | Top edge of the capture region (px) |
 | `LEFT_CAPTURE_LEFT` | `325` | Left edge of the capture region (px). Start to the right of `\|` |
 | `LEFT_CAPTURE_WIDTH` | `200` | Capture width (px) |
@@ -198,7 +201,9 @@ The console will show output like:
 
 | Detection Condition | Action |
 |---|---|
-| `confirmed_score == 0` and previous score was greater than 0 | Score returned to 0 → Reset timer and restart |
+| `acklog.txt` contains `dungeonSetInitialSeed(1) ... lvl(0) seed(N)` with a new seed value `N` | New run started → Reset timer and restart |
+
+The script records the file size of `acklog.txt` at startup and only monitors newly written content. Starting the script before the game (or while an old log exists) will not cause false triggers.
 
 ## Misread Filters
 

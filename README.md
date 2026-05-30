@@ -9,7 +9,7 @@ Pogostuck の Loot Mode において、画面 OCR でスコアを読み取り、
 ゲーム画面左上に表示されるスコア部分（例: `@ 5 | 10000` の `10000` 部分）を 0.5 秒ごとキャプチャ・OCR し、スコアが `SPLIT_SCORE_INTERVAL` の倍数を超えるたびに LiveSplit へ `split` コマンドを送信します。
 
 - 自身のスコアは黄色テキストで表示されるため、黄色ピクセルのみを抽出して認識します
-- スコアが 0 に戻ったことを検知してタイマーを自動リセット＆再スタートします
+- ゲームのログファイル（`acklog.txt`）を監視し、新しいランのシード生成を検知してタイマーを自動リセット＆再スタートします
 
 ## ファイルのダウンロード
 
@@ -23,7 +23,7 @@ Pogostuck の Loot Mode において、画面 OCR でスコアを読み取り、
 
 | ファイル | 説明 |
 |---|---|
-| `pogo_autosplit_score.py` | メインスクリプト。指定点数ごとにスプリット・スコア0でリセット検知 |
+| `pogo_autosplit_score.py` | メインスクリプト。指定点数ごとにスプリット・acklog.txtのシード検知でリセット |
 | `calibrate.py` | キャプチャ領域を確認するためのキャリブレーションツール |
 | `sample_calibrate_check.png` | キャリブレーション成功時の参考画像 |
 | `LiveSpilitLayout_LootScore.lsl` | LiveSplit レイアウトファイル |
@@ -143,7 +143,9 @@ LiveSplit の Server が起動済みの状態で、コマンドプロンプト�
 python pogo_autosplit_score.py
 ```
 
-起動後にゲームを始めると、スコアが 0 から動き出した瞬間にタイマーが自動スタートします。
+起動後にゲームを始めると、新しいランのシードが生成された瞬間にタイマーが自動リセット＆スタートします。
+
+> ⚠️ **注意：** スクリプト起動前にゲームがすでに動いていた場合（古い `acklog.txt` が存在する場合）でも、スクリプト起動**後**に書き込まれた新シードのみを検知するため、誤動作しません。
 
 ## 動作フロー
 
@@ -161,7 +163,7 @@ python pogo_autosplit_score.py
 ⑥ 同じ値が STABLE_COUNT 回連続で出たら確定
       ↓
 ⑦ スコアが SPLIT_SCORE_INTERVAL の倍数を超えた → LiveSplit へ "split" 送信
-   スコアが 0 に戻った → LiveSplit へ "reset" + "starttimer" 送信
+   acklog.txt に新シードが書き込まれた → LiveSplit へ "reset" + "starttimer" 送信
 ```
 
 ## 設定値
@@ -171,6 +173,7 @@ python pogo_autosplit_score.py
 | 定数 | デフォルト | 説明 |
 |---|---|---|
 | `TESSERACT_CMD` | `C:\...\tesseract.exe` | Tesseract の実行ファイルパス |
+| `LOG_FILE` | `C:\...\acklog.txt` | Pogostuck のログファイルパス（リセット検知に使用） |
 | `LEFT_CAPTURE_TOP` | `70` | キャプチャ領域の上端（px） |
 | `LEFT_CAPTURE_LEFT` | `325` | キャプチャ領域の左端（px）。`\|` の右側から開始 |
 | `LEFT_CAPTURE_WIDTH` | `200` | キャプチャ幅（px） |
@@ -199,7 +202,9 @@ python pogo_autosplit_score.py
 
 | 検知条件 | 動作 |
 |---|---|
-| `confirmed_score == 0` かつ直前のスコアが 0 より大きい | スコアが 0 に戻った → タイマーリセット＆再スタート |
+| `acklog.txt` に `dungeonSetInitialSeed(1) ... lvl(0) seed(N)` が書き込まれ、シード値 `N` が前回と異なる | 新ランが開始された → タイマーリセット＆再スタート |
+
+スクリプト起動時点の `acklog.txt` 末尾位置を記録し、それ以降の新規書き込みのみを監視します。ゲーム未起動状態でスクリプトを先に起動しても、古いシードには反応しません。
 
 ## 誤認識フィルタ
 
