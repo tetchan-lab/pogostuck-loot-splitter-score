@@ -38,6 +38,10 @@ Pogostuck の Loot Mode において、画面 OCR でスコアを読み取り、
 | LiveSplit | https://livesplit.org/ | タイマー表示・スプリット管理 |
 | mss / pytesseract / Pillow / numpy | `pip install` で導入（後述） | スクリプトが使用する Python ライブラリ |
 
+> ⚠️ **Pogostuck の起動オプションに `-diag` が必要です**  
+> `-diag` オプションがないと `acklog.txt` が生成されず、リセット検知が機能しません。  
+> Steam の場合は **Steam → ライブラリ → Pogostuck → プロパティ → 起動オプション** に `-diag` を追加してください。
+
 ## セットアップ手順
 
 > 初めての方は **Step 1 〜 Step 7 を順番に** 行ってください。  
@@ -205,6 +209,14 @@ python pogo_autosplit_score.py
 | `acklog.txt` に `dungeonSetInitialSeed(1) ... lvl(0) seed(N)` が書き込まれ、シード値 `N` が前回と異なる | 新ランが開始された → タイマーリセット＆再スタート |
 
 スクリプト起動時点の `acklog.txt` 末尾位置を記録し、それ以降の新規書き込みのみを監視します。ゲーム未起動状態でスクリプトを先に起動しても、古いシードには反応しません。
+
+> ⚠️ **`acklog.txt` が生成される条件**  
+> Pogostuck を **`-diag` オプション付き**で起動した場合のみ `acklog.txt` が作成されます。  
+> このファイルがない場合、リセット検知は機能しません。  
+> Steam の起動オプションに `-diag` を追加するか、以下のような `.bat` ファイルで起動してください。
+> ```
+> "C:\Program Files (x86)\Steam\steamapps\common\Pogostuck\Pogostuck.exe" -diag
+> ```
 
 ## 誤認識フィルタ
 

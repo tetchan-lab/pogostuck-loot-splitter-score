@@ -38,6 +38,10 @@ Every 0.5 seconds, the script captures the score area displayed in the upper-lef
 | LiveSplit | https://livesplit.org/ | Timer display and split management |
 | mss / pytesseract / Pillow / numpy | Install via `pip` (see below) | Python libraries used by the script |
 
+> ⚠️ **Pogostuck must be launched with the `-diag` startup option**  
+> Without `-diag`, `acklog.txt` is not created and reset detection will not work.  
+> In Steam, go to **Steam → Library → Pogostuck → Properties → Launch Options** and add `-diag`.
+
 ## Setup
 
 > If this is your first time, follow **Steps 1 through 7 in order**.  
@@ -204,6 +208,14 @@ The console will show output like:
 | `acklog.txt` contains `dungeonSetInitialSeed(1) ... lvl(0) seed(N)` with a new seed value `N` | New run started → Reset timer and restart |
 
 The script records the file size of `acklog.txt` at startup and only monitors newly written content. Starting the script before the game (or while an old log exists) will not cause false triggers.
+
+> ⚠️ **Requirement for `acklog.txt` to be generated**  
+> `acklog.txt` is only created when Pogostuck is launched with the **`-diag` startup option**.  
+> Without this file, reset detection will not function.  
+> Add `-diag` to Steam's launch options, or launch via a `.bat` file like:
+> ```
+> "C:\Program Files (x86)\Steam\steamapps\common\Pogostuck\Pogostuck.exe" -diag
+> ```
 
 ## Misread Filters
 
