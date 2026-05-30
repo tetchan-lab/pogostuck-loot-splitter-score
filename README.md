@@ -1,5 +1,7 @@
 # Pogostuck Loot Mode オートスプリッター（スコアベース版）
 
+> 🇺🇸 [English version available here](README.en.md)
+
 Pogostuck の Loot Mode において、画面 OCR でスコアを読み取り、LiveSplit のタイマーを自動制御するスクリプトです。
 
 ## 概要
