@@ -141,6 +141,7 @@ def main():
     # 起動時点のファイル末尾から監視開始（既存の古いシードを無視する）
     last_log_pos = os.path.getsize(LOG_FILE) if os.path.exists(LOG_FILE) else 0
     current_seed = None      # 現在のランのシード値
+    is_paused    = False     # ポーズ中かどうか
 
     with mss.mss() as sct:
         while True:
@@ -152,11 +153,30 @@ def main():
                     if stat.st_size < last_log_pos:
                         last_log_pos = 0
                         current_seed = None
+                        is_paused    = False
                     if stat.st_size > last_log_pos:
                         with open(LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
                             f.seek(last_log_pos)
                             chunk = f.read()
                         last_log_pos = stat.st_size
+                        # ---------------------------------------------------
+                        # ポーズ開始: " ~~~~~~ open menu frame XXX"
+                        # ---------------------------------------------------
+                        if current_seed is not None and not is_paused:
+                            if re.search(r" ~~~~~~ open menu frame \d+", chunk):
+                                is_paused = True
+                                print("\n[ポーズ] → pause")
+                                send_livesplit("pause")
+
+                        # ---------------------------------------------------
+                        # ポーズ解除: menu_close() または close menu now
+                        # ---------------------------------------------------
+                        if current_seed is not None and is_paused:
+                            if re.search(r"menu_item_function_default: menu_close\(\)|close menu now at frame \d+", chunk):
+                                is_paused = False
+                                print("\n[再開] → resume")
+                                send_livesplit("resume")
+
                         for m in re.finditer(
                             r"dungeonSetInitialSeed\(1\) at frame \d+ -> lvl\(0\) seed\((\d+)\)",
                             chunk
@@ -164,6 +184,7 @@ def main():
                             new_seed = m.group(1)
                             if new_seed != current_seed:
                                 current_seed = new_seed
+                                is_paused    = False
                                 print(f"\n[新ラン検知] seed={new_seed} → タイマーリセット＆スタート")
                                 do_reset_start()
                                 last_split_milestone = 0
@@ -173,6 +194,11 @@ def main():
                                 started = True
             except Exception as e:
                 print(f"[ログ読み込みエラー] {e}")
+
+            # ポーズ中はOCR処理をスキップ
+            if is_paused:
+                time.sleep(0.5)
+                continue
 
             raw_score = get_score_left(sct)
 
