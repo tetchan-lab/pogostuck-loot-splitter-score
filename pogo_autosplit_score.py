@@ -142,6 +142,7 @@ def main():
     last_log_pos = os.path.getsize(LOG_FILE) if os.path.exists(LOG_FILE) else 0
     current_seed = None      # 現在のランのシード値
     is_paused    = False     # ポーズ中かどうか
+    mid_join_pending = False  # 途中起動でタイマー未スタートかどうか
 
     with mss.mss() as sct:
         while True:
@@ -154,6 +155,7 @@ def main():
                         last_log_pos = 0
                         current_seed = None
                         is_paused    = False
+                        mid_join_pending = False
                     if stat.st_size > last_log_pos:
                         with open(LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
                             f.seek(last_log_pos)
@@ -174,8 +176,14 @@ def main():
                         if current_seed is not None and is_paused:
                             if re.search(r"menu_item_function_default: menu_close\(\)|close menu now at frame \d+", chunk):
                                 is_paused = False
-                                print("\n[再開] → resume")
-                                send_livesplit("resume")
+                                if mid_join_pending:
+                                    # 途中起動後の初回ポーズ解除 → タイマースタート
+                                    mid_join_pending = False
+                                    print("\n[再開（途中起動）] → starttimer")
+                                    send_livesplit("starttimer")
+                                else:
+                                    print("\n[再開] → resume")
+                                    send_livesplit("resume")
 
                         for m in re.finditer(
                             r"dungeonSetInitialSeed\(1\) at frame \d+ -> lvl\(0\) seed\((\d+)\)",
@@ -185,6 +193,7 @@ def main():
                             if new_seed != current_seed:
                                 current_seed = new_seed
                                 is_paused    = False
+                                mid_join_pending = False
                                 print(f"\n[新ラン検知] seed={new_seed} → タイマーリセット＆スタート")
                                 do_reset_start()
                                 last_split_milestone = 0
@@ -254,10 +263,14 @@ def main():
             # ── 初回確定（スクリプト途中起動時） ──
             if not started:
                 # 途中からスクリプト起動（スコアが既に非ゼロ・acklog未検知）
-                # タイマー操作はせず、現在のマイルストーンから監視開始
+                # タイマーはポーズ解除まで待機。ポーズ検知を有効化するため current_seed をセット
+                # is_paused = True にして起動前のポーズ状態を仮定（解除ログを確実に捕捉するため）
                 last_split_milestone = confirmed_score // SPLIT_SCORE_INTERVAL
-                print(f"  → 途中参加: マイルストーン {last_split_milestone} から監視開始")
-                started = True
+                current_seed     = "mid-join"
+                mid_join_pending = True
+                is_paused        = True
+                started          = True
+                print(f"  → 途中参加: マイルストーン {last_split_milestone} から監視開始 (ポーズ解除でタイマースタート)")
                 time.sleep(0.5)
                 continue
 
